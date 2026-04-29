@@ -1,0 +1,1256 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#00e5ff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PixelForge">
+<title>PIXEL FORGE — ドット絵変換ツール</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&family=Noto+Sans+JP:wght@400;700&display=swap');
+
+  :root {
+    --bg:       #0a0c10;
+    --surface:  #111318;
+    --panel:    #16191f;
+    --border:   #2a2f3a;
+    --accent:   #00e5ff;
+    --accent2:  #ff3d7f;
+    --accent3:  #b8ff57;
+    --text:     #d0d8e8;
+    --muted:    #5a6278;
+    --radius:   4px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans JP', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+
+  /* ── SCANLINE OVERLAY（ヘッダーのみ） ── */
+  header::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 2px,
+      rgba(0,0,0,.18) 2px,
+      rgba(0,0,0,.18) 4px
+    );
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* ── HEADER ── */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: relative;
+    overflow: hidden;
+  }
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2), var(--accent3));
+  }
+
+  .logo-grid {
+    display: grid;
+    grid-template-columns: repeat(4,8px);
+    grid-template-rows: repeat(4,8px);
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .logo-grid span {
+    display: block;
+    border-radius: 1px;
+  }
+
+  .logo-text {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 22px;
+    letter-spacing: 4px;
+    color: #fff;
+    text-transform: uppercase;
+  }
+  .logo-text em {
+    font-style: normal;
+    color: var(--accent);
+  }
+  .logo-sub {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  /* ── MAIN LAYOUT ── */
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    grid-template-rows: auto 1fr;
+    gap: 0;
+    max-width: 1100px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 28px 24px;
+    gap: 20px;
+  }
+
+  /* ── DROP ZONE ── */
+  .drop-zone {
+    grid-column: 1;
+    grid-row: 1;
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 36px;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+    min-height: 160px;
+    position: relative;
+    overflow: hidden;
+  }
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--accent);
+    background: rgba(0,229,255,.04);
+  }
+  .drop-zone-icon {
+    font-size: 36px;
+    line-height: 1;
+    filter: grayscale(1) opacity(.5);
+    transition: filter .2s;
+  }
+  .drop-zone:hover .drop-zone-icon { filter: none; }
+  .drop-zone-label {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 15px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .drop-zone-hint {
+    font-size: 11px;
+    color: var(--muted);
+    opacity: .6;
+  }
+  #file-input { display: none; }
+
+  /* ── SETTINGS PANEL ── */
+  .settings {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    align-self: start;
+  }
+
+  .section-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* toggle group */
+  .toggle-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .toggle-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--muted);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    padding: 9px 14px;
+    cursor: pointer;
+    transition: all .15s;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .toggle-btn .badge {
+    margin-left: auto;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 2px;
+    background: var(--border);
+    color: var(--muted);
+  }
+  .toggle-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  .toggle-btn.active {
+    border-color: var(--accent);
+    background: rgba(0,229,255,.08);
+    color: var(--accent);
+  }
+  .toggle-btn.active .badge {
+    background: var(--accent);
+    color: #000;
+  }
+
+  /* select */
+  .styled-select {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    padding: 9px 12px;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235a6278' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+  }
+  .styled-select:focus { outline: 1px solid var(--accent); }
+
+  /* checkbox */
+  .check-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    color: var(--text);
+  }
+  .check-row input[type=checkbox] {
+    width: 16px; height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  /* convert button */
+  .btn-convert {
+    width: 100%;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: var(--radius);
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    padding: 13px;
+    cursor: pointer;
+    transition: background .2s, transform .1s;
+  }
+  .btn-convert:hover { background: #33eeff; }
+  .btn-convert:active { transform: scale(.98); }
+  .btn-convert:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+
+  .btn-dl {
+    width: 100%;
+    background: transparent;
+    color: var(--accent3);
+    border: 1px solid var(--accent3);
+    border-radius: var(--radius);
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 11px;
+    cursor: pointer;
+    transition: background .2s;
+    margin-top: 4px;
+  }
+  .btn-dl:hover { background: rgba(184,255,87,.08); }
+  .btn-dl:disabled { opacity: .3; cursor: not-allowed; }
+
+  /* ── PREVIEW AREA ── */
+  .preview-area {
+    grid-column: 1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .preview-area.three-col {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .preview-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 260px;
+  }
+  .preview-title {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .preview-title span {
+    color: var(--accent2);
+    margin-right: 6px;
+  }
+
+  .preview-canvas-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: repeating-conic-gradient(#1a1d24 0% 25%, #141619 0% 50%) 0 0 / 20px 20px;
+    border-radius: 2px;
+    overflow: hidden;
+    min-height: 200px;
+  }
+  .preview-canvas-wrap canvas,
+  .preview-canvas-wrap img {
+    max-width: 100%;
+    max-height: 260px;
+    object-fit: contain;
+    image-rendering: pixelated;
+  }
+
+  .placeholder-msg {
+    color: var(--muted);
+    font-size: 12px;
+    font-family: 'Share Tech Mono', monospace;
+    letter-spacing: 1px;
+    opacity: .5;
+  }
+
+  /* info bar */
+  .info-bar {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .info-bar .tag {
+    background: var(--border);
+    padding: 2px 7px;
+    border-radius: 2px;
+  }
+
+  /* zoom control */
+  .zoom-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .zoom-row select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    padding: 3px 6px;
+  }
+
+  /* status */
+  #status {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    padding: 6px 10px;
+    border-radius: 2px;
+    display: none;
+  }
+  #status.ok  { display:block; background: rgba(184,255,87,.1);  color: var(--accent3); border-left: 2px solid var(--accent3); }
+  #status.err { display:block; background: rgba(255,61,127,.1);  color: var(--accent2); border-left: 2px solid var(--accent2); }
+
+  /* ── PALETTE PRESETS ── */
+  .preset-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .preset-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--muted);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    padding: 8px 10px;
+    cursor: pointer;
+    transition: all .15s;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .preset-btn:hover { border-color: var(--accent); color: var(--text); }
+  .preset-btn.active {
+    border-color: var(--accent2);
+    background: rgba(255,61,127,.08);
+    color: var(--accent2);
+  }
+  .preset-swatches {
+    display: flex;
+    gap: 3px;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .preset-swatches span {
+    display: block;
+    width: 10px;
+    height: 10px;
+    border-radius: 1px;
+    border: 1px solid rgba(255,255,255,.1);
+  }
+  .preset-name { flex: 1; min-width: 0; }
+  .preset-count {
+    font-size: 9px;
+    color: var(--muted);
+    opacity: .7;
+  }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo-grid" id="logoGrid"></div>
+  <div>
+    <div class="logo-text">PIXEL <em>FORGE</em></div>
+    <div class="logo-sub">Dot Art Converter — Nearest Neighbor</div>
+  </div>
+</header>
+
+<main>
+  <!-- DROP ZONE -->
+  <div class="drop-zone" id="dropZone">
+    <div class="drop-zone-icon">🖼️</div>
+    <div class="drop-zone-label">画像をドロップ または クリックして選択</div>
+    <div class="drop-zone-hint">PNG / JPG / GIF / WebP 対応</div>
+    <input type="file" id="file-input" accept="image/*">
+  </div>
+
+  <!-- SETTINGS -->
+  <aside class="settings">
+    <div>
+      <div class="section-label">Output Size</div>
+      <div class="toggle-group">
+        <button class="toggle-btn" data-size="16">
+          <span>■</span> 16 × 16
+          <span class="badge">px</span>
+        </button>
+        <button class="toggle-btn active" data-size="32">
+          <span>■</span> 32 × 32
+          <span class="badge">px</span>
+        </button>
+        <button class="toggle-btn" data-size="64">
+          <span>■</span> 64 × 64
+          <span class="badge">px</span>
+        </button>
+        <button class="toggle-btn" data-size="96">
+          <span>■</span> 96 × 96
+          <span class="badge">px</span>
+        </button>
+        <button class="toggle-btn" data-size="128">
+          <span>■</span> 128 × 128
+          <span class="badge">px</span>
+        </button>
+        <button class="toggle-btn" data-size="192">
+          <span>■</span> 192 × 192
+          <span class="badge">px</span>
+        </button>
+        <button class="toggle-btn" data-size="256">
+          <span>■</span> 256 × 256
+          <span class="badge">px</span>
+        </button>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Palette Preset</div>
+      <div class="preset-grid" id="presetGrid"></div>
+    </div>
+
+    <div>
+      <div class="section-label">Color Palette</div>
+      <select class="styled-select" id="paletteSelect">
+        <option value="0">無制限（フルカラー）</option>
+        <option value="8">8色</option>
+        <option value="16" selected>16色</option>
+        <option value="32">32色</option>
+        <option value="64">64色</option>
+      </select>
+    </div>
+
+    <div>
+      <div class="section-label">Illustrate (Step 1)</div>
+      <label class="check-row" style="margin-bottom:8px">
+        <input type="checkbox" id="illustrateCheck">
+        イラスト風に変換してからドット化
+      </label>
+      <div id="illustrateOptions" style="display:none; flex-direction:column; gap:6px; padding-left:4px;">
+        <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:2px;">スタイル</div>
+        <div class="toggle-group" id="illustrateStyleGroup">
+          <button class="toggle-btn active" data-style="anime">🎨 アニメ風</button>
+          <button class="toggle-btn" data-style="flat">🟦 フラット</button>
+          <button class="toggle-btn" data-style="sketch">✏️ スケッチ</button>
+        </div>
+        <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);margin-top:4px;">輪郭の強さ</div>
+        <input type="range" id="edgeStrength" min="0" max="100" value="50"
+          style="width:100%;accent-color:var(--accent);cursor:pointer;">
+        <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);">色の鮮やかさ</div>
+        <input type="range" id="saturation" min="0" max="200" value="130"
+          style="width:100%;accent-color:var(--accent2);cursor:pointer;">
+        <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);">色の段階数 (ポスタリゼーション)</div>
+        <input type="range" id="posterize" min="2" max="8" value="4"
+          style="width:100%;accent-color:var(--accent3);cursor:pointer;">
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Dithering (Step 2)</div>
+      <label class="check-row">
+        <input type="checkbox" id="ditheringCheck">
+        Floyd-Steinberg ディザリング
+      </label>
+    </div>
+
+    <div>
+      <div class="section-label">Display Zoom</div>
+      <select class="styled-select" id="zoomSelect">
+        <option value="1">等倍 (1x)</option>
+        <option value="4">4x</option>
+        <option value="8" selected>8x</option>
+        <option value="16">16x</option>
+      </select>
+    </div>
+
+    <div id="status"></div>
+
+    <button class="btn-convert" id="btnConvert" disabled>CONVERT</button>
+    <button class="btn-dl" id="btnDl" disabled>⬇ PNG ダウンロード</button>
+  </aside>
+
+  <!-- PREVIEW -->
+  <section class="preview-area" id="previewArea">
+    <div class="preview-box">
+      <div class="preview-title"><span>01</span>ORIGINAL</div>
+      <div class="preview-canvas-wrap" id="beforeWrap">
+        <span class="placeholder-msg">NO IMAGE</span>
+      </div>
+      <div class="info-bar" id="beforeInfo"></div>
+    </div>
+    <div class="preview-box" id="illustrateBox" style="display:none">
+      <div class="preview-title"><span>02</span>ILLUSTRATE</div>
+      <div class="preview-canvas-wrap" id="illustrateWrap">
+        <span class="placeholder-msg">NO OUTPUT</span>
+      </div>
+      <div class="info-bar" id="illustrateInfo"></div>
+    </div>
+    <div class="preview-box">
+      <div class="preview-title"><span id="pixelStep">02</span>PIXEL ART</div>
+      <div class="preview-canvas-wrap" id="afterWrap">
+        <span class="placeholder-msg">NO OUTPUT</span>
+      </div>
+      <div class="info-bar" id="afterInfo"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+// ── Palette Presets ──
+const PRESETS = {
+  none: {
+    label: 'なし（メディアンカット）',
+    colors: null,
+    swatches: ['#e74c3c','#3498db','#2ecc71','#f1c40f'],
+    count: null,
+  },
+  gameboy: {
+    label: 'ゲームボーイ',
+    colors: [
+      [15,56,15],[48,98,48],[139,172,15],[155,188,15]
+    ],
+    swatches: ['#0f380f','#306230','#8bac0f','#9bbc0f'],
+    count: '4色',
+  },
+  gameboyPocket: {
+    label: 'GB ポケット',
+    colors: [
+      [0,0,0],[85,85,85],[170,170,170],[255,255,255]
+    ],
+    swatches: ['#000','#555','#aaa','#fff'],
+    count: '4色',
+  },
+  famicom: {
+    label: 'ファミコン',
+    colors: [
+      [124,124,124],[0,0,252],[0,0,188],[68,40,188],
+      [148,0,132],[168,0,32],[168,16,0],[136,20,0],
+      [80,48,0],[0,120,0],[0,104,0],[0,88,0],
+      [0,64,88],[0,0,0],[0,0,0],[0,0,0],
+      [188,188,188],[0,120,248],[0,88,248],[104,68,252],
+      [216,0,204],[228,0,88],[248,56,0],[228,92,16],
+      [172,124,0],[0,184,0],[0,168,0],[0,168,68],
+      [0,136,136],[0,0,0],[0,0,0],[0,0,0],
+      [248,248,248],[60,188,252],[104,136,252],[152,120,248],
+      [248,120,248],[248,88,152],[248,120,88],[252,160,68],
+      [248,184,0],[184,248,24],[88,216,84],[88,248,152],
+      [0,232,216],[120,120,120],[0,0,0],[0,0,0],
+      [252,252,252],[164,228,252],[184,184,248],[216,184,248],
+      [248,184,248],[248,164,192],[240,208,176],[252,224,168],
+      [248,216,120],[216,248,120],[184,248,184],[184,248,216],
+      [0,252,252],[248,216,248],[0,0,0],[0,0,0],
+    ],
+    swatches: ['#7c7c7c','#0000fc','#b400cc','#a80010','#00b800','#007c88','#bcbcbc','#f8f8f8'],
+    count: '54色',
+  },
+  cga: {
+    label: 'CGA (PC-88風)',
+    colors: [
+      [0,0,0],[0,0,170],[0,170,0],[0,170,170],
+      [170,0,0],[170,0,170],[170,85,0],[170,170,170],
+      [85,85,85],[85,85,255],[85,255,85],[85,255,255],
+      [255,85,85],[255,85,255],[255,255,85],[255,255,255],
+    ],
+    swatches: ['#000','#00aa','#0a0','#0aa','#a00','#a0a','#aa5500','#aaa'],
+    count: '16色',
+  },
+  msx: {
+    label: 'MSX',
+    colors: [
+      [0,0,0],[1,1,1],[62,182,76],[116,208,125],
+      [89,85,224],[128,118,241],[185,94,81],[101,219,239],
+      [219,101,89],[255,137,125],[204,195,94],[233,218,128],
+      [58,162,65],[183,102,181],[204,204,204],[255,255,255],
+    ],
+    swatches: ['#000','#3eb64c','#5955e0','#b95e51','#65dbef','#ccc37e','#3aa241','#cccccc'],
+    count: '16色',
+  },
+  pico8: {
+    label: 'PICO-8',
+    colors: [
+      [0,0,0],[29,43,83],[126,37,83],[0,135,81],
+      [171,82,54],[95,87,79],[194,195,199],[255,241,232],
+      [255,0,77],[255,163,0],[255,236,39],[0,228,54],
+      [41,173,255],[131,118,156],[255,119,168],[255,204,170],
+    ],
+    swatches: ['#000','#1d2b53','#7e2553','#008751','#ff004d','#ffa300','#ffec27','#00e436'],
+    count: '16色',
+  },
+  gameboy_color: {
+    label: 'GBC パステル',
+    colors: [
+      [255,255,255],[255,199,145],[255,145,95],[214,95,95],
+      [181,49,33],[107,0,0],[255,239,181],[255,214,107],
+      [181,148,0],[107,82,0],[197,255,197],[107,214,107],
+      [33,148,33],[0,82,0],[197,239,255],[107,197,255],
+      [33,131,214],[0,57,131],[214,197,255],[148,107,255],
+      [82,33,214],[33,0,107],[255,197,255],[255,107,255],
+      [214,33,214],[107,0,107],[181,181,181],[107,107,107],
+      [57,57,57],[0,0,0],[255,181,181],[148,0,0],
+    ],
+    swatches: ['#fff','#ffb861','#ff5f5f','#b53121','#c5ffc5','#21d421','#c5efff','#2183d6'],
+    count: '32色',
+  },
+};
+
+let activePalette = 'none'; // 'none' = use median cut
+
+function buildPresets() {
+  const grid = document.getElementById('presetGrid');
+  Object.entries(PRESETS).forEach(([key, p]) => {
+    const btn = document.createElement('button');
+    btn.className = 'preset-btn' + (key === activePalette ? ' active' : '');
+    btn.dataset.preset = key;
+
+    const swatchEl = p.swatches.map(c =>
+      `<span style="background:${c}"></span>`
+    ).join('');
+
+    btn.innerHTML = `
+      <span class="preset-name">${p.label}</span>
+      ${p.count ? `<span class="preset-count">${p.count}</span>` : ''}
+      <span class="preset-swatches">${swatchEl}</span>
+    `;
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activePalette = key;
+    });
+    grid.appendChild(btn);
+  });
+}
+buildPresets();
+
+// ── Illustrate UI wiring ──
+const illustrateCheck   = document.getElementById('illustrateCheck');
+const illustrateOptions = document.getElementById('illustrateOptions');
+const illustrateBox     = document.getElementById('illustrateBox');
+const illustrateWrap    = document.getElementById('illustrateWrap');
+const illustrateInfo    = document.getElementById('illustrateInfo');
+const previewArea       = document.getElementById('previewArea');
+const pixelStep         = document.getElementById('pixelStep');
+let activeIllustrateStyle = 'anime';
+
+illustrateCheck.addEventListener('change', () => {
+  const on = illustrateCheck.checked;
+  illustrateOptions.style.display = on ? 'flex' : 'none';
+  illustrateBox.style.display     = on ? 'flex' : 'none';
+  previewArea.classList.toggle('three-col', on);
+  pixelStep.textContent = on ? '03' : '02';
+});
+
+document.querySelectorAll('#illustrateStyleGroup .toggle-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#illustrateStyleGroup .toggle-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeIllustrateStyle = btn.dataset.style;
+  });
+});
+
+
+
+(function() {
+  const grid = document.getElementById('logoGrid');
+  const colors = ['#00e5ff','#ff3d7f','#b8ff57','#fff','#2a2f3a'];
+  const pattern = [1,2,3,1, 2,0,0,3, 3,0,0,2, 1,3,2,1];
+  pattern.forEach((c,i) => {
+    const s = document.createElement('span');
+    s.style.background = colors[c];
+    s.style.opacity = .7 + Math.random()*.3;
+    grid.appendChild(s);
+    setInterval(() => {
+      s.style.opacity = Math.random() > .85 ? (.3 + Math.random()*.7) : s.style.opacity;
+    }, 800 + i * 120);
+  });
+})();
+
+// ── State ──
+let originalImage = null;
+let outputCanvas  = null;
+let selectedSize  = 32;
+
+// ── DOM refs ──
+const dropZone     = document.getElementById('dropZone');
+const fileInput    = document.getElementById('file-input');
+const btnConvert   = document.getElementById('btnConvert');
+const btnDl        = document.getElementById('btnDl');
+const paletteSelect= document.getElementById('paletteSelect');
+const ditheringChk = document.getElementById('ditheringCheck');
+const zoomSelect   = document.getElementById('zoomSelect');
+const beforeWrap   = document.getElementById('beforeWrap');
+const afterWrap    = document.getElementById('afterWrap');
+const beforeInfo   = document.getElementById('beforeInfo');
+const afterInfo    = document.getElementById('afterInfo');
+const statusEl     = document.getElementById('status');
+
+// ── Size toggle ──
+document.querySelectorAll('.toggle-btn[data-size]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.toggle-btn[data-size]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedSize = parseInt(btn.dataset.size);
+  });
+});
+
+// ── Drop zone ──
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) loadFile(file);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) loadFile(fileInput.files[0]);
+});
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      originalImage = img;
+      // show before
+      beforeWrap.innerHTML = '';
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      c.getContext('2d').drawImage(img, 0, 0);
+      beforeWrap.appendChild(c);
+      beforeInfo.innerHTML = `<span class="tag">${img.width}×${img.height}</span><span class="tag">${formatBytes(file.size)}</span>`;
+      // reset after
+      afterWrap.innerHTML = '<span class="placeholder-msg">NO OUTPUT</span>';
+      afterInfo.innerHTML = '';
+      outputCanvas = null;
+      btnConvert.disabled = false;
+      btnDl.disabled = true;
+      setStatus('');
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── Convert ──
+btnConvert.addEventListener('click', async () => {
+  if (!originalImage) return;
+  try {
+    const size     = selectedSize;
+    const colors   = parseInt(paletteSelect.value);
+    const dither   = ditheringChk.checked;
+    // Auto-cap zoom for large sizes to avoid blowing out the preview
+    let zoom = parseInt(zoomSelect.value);
+    if (size >= 128 && zoom > 4) zoom = 4;
+    if (size >= 192 && zoom > 2) zoom = 2;
+    if (size >= 256 && zoom > 1) zoom = 1;
+    const preset   = PRESETS[activePalette];
+
+    // 0. Illustrate step — work at full resolution before downscaling
+    let sourceImage = originalImage;
+    if (illustrateCheck.checked) {
+      const ilCanvas = illustrateImage(
+        originalImage,
+        activeIllustrateStyle,
+        parseFloat(document.getElementById('edgeStrength').value) / 100,
+        parseFloat(document.getElementById('saturation').value) / 100,
+        parseInt(document.getElementById('posterize').value)
+      );
+      // Show illustrate preview
+      illustrateWrap.innerHTML = '';
+      illustrateWrap.appendChild(ilCanvas);
+      illustrateInfo.innerHTML = `<span class="tag">${ilCanvas.width}×${ilCanvas.height}</span><span class="tag">${activeIllustrateStyle}</span>`;
+      // Use illustrated canvas as source
+      const ilImg = new Image();
+      await new Promise(res => { ilImg.onload = res; ilImg.src = ilCanvas.toDataURL(); });
+      sourceImage = ilImg;
+    }
+
+    // 1. Draw to offscreen canvas, scale down (Nearest Neighbor)
+    const src = document.createElement('canvas');
+    src.width  = size;
+    src.height = size;
+    const sctx = src.getContext('2d');
+    sctx.imageSmoothingEnabled = false;
+    sctx.drawImage(sourceImage, 0, 0, size, size);
+
+    let imgData = sctx.getImageData(0, 0, size, size);
+
+    // 2. Color reduction — preset takes priority over median cut
+    if (preset.colors) {
+      // Apply fixed preset palette directly
+      imgData = applyPalette(imgData, preset.colors, dither);
+    } else if (colors > 0) {
+      imgData = reduceColors(imgData, colors, dither);
+    }
+
+    // 3. Scale up for display (Nearest Neighbor)
+    const displaySize = size * zoom;
+    const display = document.createElement('canvas');
+    display.width  = displaySize;
+    display.height = displaySize;
+    const dctx = display.getContext('2d');
+
+    const tmp = document.createElement('canvas');
+    tmp.width = size; tmp.height = size;
+    tmp.getContext('2d').putImageData(imgData, 0, 0);
+
+    dctx.imageSmoothingEnabled = false;
+    dctx.drawImage(tmp, 0, 0, displaySize, displaySize);
+
+    // show
+    afterWrap.innerHTML = '';
+    afterWrap.appendChild(display);
+
+    const paletteLabel = preset.colors
+      ? preset.label
+      : colors > 0 ? `${colors}色` : 'フルカラー';
+    afterInfo.innerHTML = `<span class="tag">${size}×${size} px</span><span class="tag">zoom ${zoom}x</span><span class="tag">${paletteLabel}</span>`;
+
+    outputCanvas = tmp;
+    btnDl.disabled = false;
+    setStatus('ok', `変換完了 — ${size}×${size} / ${paletteLabel}${dither?' + dither':''}`);
+  } catch(e) {
+    setStatus('err', 'エラー: ' + e.message);
+  }
+});
+
+// ── Download ──
+btnDl.addEventListener('click', () => {
+  if (!outputCanvas) return;
+  const link = document.createElement('a');
+  link.download = `pixelart_${selectedSize}x${selectedSize}.png`;
+  link.href = outputCanvas.toDataURL('image/png');
+  link.click();
+});
+
+// ── Status helper ──
+function setStatus(type, msg='') {
+  statusEl.className = type;
+  statusEl.textContent = msg;
+}
+
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+
+// ── Illustrate: convert photo to illustration-like image ──
+function illustrateImage(img, style, edgeStr, satScale, posterLevels) {
+  const w = img.naturalWidth  || img.width;
+  const h = img.naturalHeight || img.height;
+
+  // --- base canvas ---
+  const base = document.createElement('canvas');
+  base.width = w; base.height = h;
+  const bctx = base.getContext('2d');
+  bctx.drawImage(img, 0, 0);
+
+  let d = bctx.getImageData(0, 0, w, h);
+
+  // 1. Saturation boost
+  adjustSaturation(d.data, satScale);
+
+  // 2. Style-specific processing
+  if (style === 'anime') {
+    posterizeData(d.data, posterLevels);
+  } else if (style === 'flat') {
+    posterizeData(d.data, Math.max(2, posterLevels - 1));
+    // extra contrast
+    adjustContrast(d.data, 1.3);
+  } else if (style === 'sketch') {
+    posterizeData(d.data, posterLevels + 2);
+  }
+
+  bctx.putImageData(d, 0, 0);
+
+  if (edgeStr < 0.01) return base;
+
+  // 3. Edge detection on grayscale copy
+  const gray = document.createElement('canvas');
+  gray.width = w; gray.height = h;
+  const gctx = gray.getContext('2d');
+  gctx.drawImage(img, 0, 0);
+  const gd = gctx.getImageData(0, 0, w, h);
+  toGrayscale(gd.data);
+
+  // Blur for edge detection
+  const blurred = gaussianBlurData(gd.data, w, h, 1.0);
+  const edges   = sobelEdge(blurred, w, h);
+
+  // 4. Composite: draw base, then overlay edges
+  const out = document.createElement('canvas');
+  out.width = w; out.height = h;
+  const octx = out.getContext('2d');
+  octx.drawImage(base, 0, 0);
+
+  // Draw edges as dark lines
+  const edgeImg = octx.createImageData(w, h);
+  for (let i = 0; i < edges.length; i++) {
+    const strength = Math.min(255, edges[i] * 3 * edgeStr);
+    const idx = i * 4;
+    if (style === 'sketch') {
+      // sketch: dark lines on white-ish base
+      edgeImg.data[idx]   = 20;
+      edgeImg.data[idx+1] = 20;
+      edgeImg.data[idx+2] = 20;
+      edgeImg.data[idx+3] = strength;
+    } else {
+      edgeImg.data[idx]   = 0;
+      edgeImg.data[idx+1] = 0;
+      edgeImg.data[idx+2] = 0;
+      edgeImg.data[idx+3] = strength * 0.85;
+    }
+  }
+  const edgeCanvas = document.createElement('canvas');
+  edgeCanvas.width = w; edgeCanvas.height = h;
+  edgeCanvas.getContext('2d').putImageData(edgeImg, 0, 0);
+  octx.drawImage(edgeCanvas, 0, 0);
+
+  return out;
+}
+
+function adjustSaturation(data, scale) {
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i+1], b = data[i+2];
+    const gray = 0.299*r + 0.587*g + 0.114*b;
+    data[i]   = clamp(gray + (r - gray) * scale);
+    data[i+1] = clamp(gray + (g - gray) * scale);
+    data[i+2] = clamp(gray + (b - gray) * scale);
+  }
+}
+
+function adjustContrast(data, factor) {
+  for (let i = 0; i < data.length; i += 4) {
+    data[i]   = clamp((data[i]   - 128) * factor + 128);
+    data[i+1] = clamp((data[i+1] - 128) * factor + 128);
+    data[i+2] = clamp((data[i+2] - 128) * factor + 128);
+  }
+}
+
+function posterizeData(data, levels) {
+  const step = 255 / (levels - 1);
+  for (let i = 0; i < data.length; i += 4) {
+    data[i]   = Math.round(Math.round(data[i]   / step) * step);
+    data[i+1] = Math.round(Math.round(data[i+1] / step) * step);
+    data[i+2] = Math.round(Math.round(data[i+2] / step) * step);
+  }
+}
+
+function toGrayscale(data) {
+  for (let i = 0; i < data.length; i += 4) {
+    const g = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
+    data[i] = data[i+1] = data[i+2] = g;
+  }
+}
+
+function gaussianBlurData(data, w, h, sigma) {
+  // simple 3x3 box blur as approximation
+  const out = new Uint8ClampedArray(data.length);
+  const kernel = [1,2,1, 2,4,2, 1,2,1];
+  const ksum = 16;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let r=0,g=0,b=0;
+      let ki = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = Math.min(w-1, Math.max(0, x+dx));
+          const ny = Math.min(h-1, Math.max(0, y+dy));
+          const ni = (ny*w+nx)*4;
+          const w2 = kernel[ki++];
+          r += data[ni]*w2; g += data[ni+1]*w2; b += data[ni+2]*w2;
+        }
+      }
+      const oi = (y*w+x)*4;
+      out[oi]=r/ksum; out[oi+1]=g/ksum; out[oi+2]=b/ksum; out[oi+3]=255;
+    }
+  }
+  return out;
+}
+
+function sobelEdge(data, w, h) {
+  const out = new Float32Array(w * h);
+  const Kx = [-1,0,1,-2,0,2,-1,0,1];
+  const Ky = [-1,-2,-1,0,0,0,1,2,1];
+  for (let y = 1; y < h-1; y++) {
+    for (let x = 1; x < w-1; x++) {
+      let gx=0, gy=0, ki=0;
+      for (let dy=-1; dy<=1; dy++) {
+        for (let dx=-1; dx<=1; dx++) {
+          const v = data[((y+dy)*w+(x+dx))*4];
+          gx += v * Kx[ki];
+          gy += v * Ky[ki];
+          ki++;
+        }
+      }
+      out[y*w+x] = Math.sqrt(gx*gx+gy*gy) / 255;
+    }
+  }
+  return out;
+}
+
+function clamp(v) { return Math.max(0, Math.min(255, Math.round(v))); }
+
+// ── Apply fixed preset palette ──
+function applyPalette(imgData, palette, dither) {
+  const data = new Uint8ClampedArray(imgData.data);
+  const w = imgData.width, h = imgData.height;
+  if (dither) {
+    floydSteinberg(data, w, h, palette);
+  } else {
+    for (let i = 0; i < data.length; i += 4) {
+      const [r,g,b] = nearestColor(data[i], data[i+1], data[i+2], palette);
+      data[i]=r; data[i+1]=g; data[i+2]=b;
+    }
+  }
+  return new ImageData(data, w, h);
+}
+
+// ── Color Reduction (Median Cut) + Floyd-Steinberg Dithering ──
+
+function reduceColors(imgData, maxColors, dither) {
+  const data = new Uint8ClampedArray(imgData.data);
+  const w = imgData.width, h = imgData.height;
+
+  // Build palette via Median Cut
+  const palette = medianCut(data, maxColors);
+
+  if (dither) {
+    floydSteinberg(data, w, h, palette);
+  } else {
+    for (let i = 0; i < data.length; i += 4) {
+      const [r,g,b] = nearestColor(data[i], data[i+1], data[i+2], palette);
+      data[i]=r; data[i+1]=g; data[i+2]=b;
+    }
+  }
+
+  return new ImageData(data, w, h);
+}
+
+function medianCut(data, maxColors) {
+  // collect unique pixel list
+  let pixels = [];
+  for (let i = 0; i < data.length; i += 4) {
+    pixels.push([data[i], data[i+1], data[i+2]]);
+  }
+
+  let buckets = [pixels];
+
+  while (buckets.length < maxColors) {
+    // find bucket with largest range
+    let maxRange = -1, splitIdx = 0;
+    buckets.forEach((b,i) => {
+      const range = colorRange(b);
+      if (range > maxRange) { maxRange = range; splitIdx = i; }
+    });
+
+    const bucket = buckets[splitIdx];
+    if (bucket.length <= 1) break;
+
+    // find dominant channel
+    let rMin=255,rMax=0,gMin=255,gMax=0,bMin=255,bMax=0;
+    bucket.forEach(([r,g,b]) => {
+      if(r<rMin)rMin=r; if(r>rMax)rMax=r;
+      if(g<gMin)gMin=g; if(g>gMax)gMax=g;
+      if(b<bMin)bMin=b; if(b>bMax)bMax=b;
+    });
+    const rR=rMax-rMin, gR=gMax-gMin, bR=bMax-bMin;
+    const ch = rR>=gR && rR>=bR ? 0 : gR>=bR ? 1 : 2;
+
+    bucket.sort((a,b) => a[ch]-b[ch]);
+    const mid = Math.floor(bucket.length/2);
+    buckets.splice(splitIdx, 1, bucket.slice(0,mid), bucket.slice(mid));
+  }
+
+  return buckets.map(b => {
+    const avg = [0,0,0];
+    b.forEach(p => { avg[0]+=p[0]; avg[1]+=p[1]; avg[2]+=p[2]; });
+    return avg.map(v => Math.round(v/b.length));
+  });
+}
+
+function colorRange(bucket) {
+  let rMin=255,rMax=0,gMin=255,gMax=0,bMin=255,bMax=0;
+  bucket.forEach(([r,g,b]) => {
+    if(r<rMin)rMin=r; if(r>rMax)rMax=r;
+    if(g<gMin)gMin=g; if(g>gMax)gMax=g;
+    if(b<bMin)bMin=b; if(b>bMax)bMax=b;
+  });
+  return Math.max(rMax-rMin, gMax-gMin, bMax-bMin);
+}
+
+function nearestColor(r, g, b, palette) {
+  let best = palette[0], bestD = Infinity;
+  for (const p of palette) {
+    const d = (r-p[0])**2 + (g-p[1])**2 + (b-p[2])**2;
+    if (d < bestD) { bestD = d; best = p; }
+  }
+  return best;
+}
+
+function floydSteinberg(data, w, h, palette) {
+  const err = new Float32Array(data.length); // r,g,b error per pixel
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = (y*w+x)*4;
+      const or = Math.max(0,Math.min(255, data[idx]   + err[idx]));
+      const og = Math.max(0,Math.min(255, data[idx+1] + err[idx+1]));
+      const ob = Math.max(0,Math.min(255, data[idx+2] + err[idx+2]));
+
+      const [nr,ng,nb] = nearestColor(or, og, ob, palette);
+      data[idx]=nr; data[idx+1]=ng; data[idx+2]=nb;
+
+      const eR = or-nr, eG = og-ng, eB = ob-nb;
+
+      const spread = [
+        [x+1, y,   7/16],
+        [x-1, y+1, 3/16],
+        [x,   y+1, 5/16],
+        [x+1, y+1, 1/16],
+      ];
+      spread.forEach(([nx, ny, f]) => {
+        if (nx>=0 && nx<w && ny<h) {
+          const ni = (ny*w+nx)*4;
+          err[ni]   += eR*f;
+          err[ni+1] += eG*f;
+          err[ni+2] += eB*f;
+        }
+      });
+    }
+  }
+}
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
